@@ -1,6 +1,6 @@
 # Predicting the Compressive Strength of Concrete
 ### Sam Wigley
-### Octover 20, 2015
+### October 20, 2015
 
 This report is an exportatory data analysis on a dataset provided by the University of California at Irvine's Machine Learning department.  The dataset contains 1030 observations including 9 quantitative variables.  
 
