@@ -5,7 +5,7 @@ Predicting the Compressive Strength of Concrete by its Composition
 ========================================================
 Sam Wigley
 ----------
-November 20, 2015
+December 03, 2015
 -----------------
 
 # Abstract
@@ -18,7 +18,7 @@ http://archive.ics.uci.edu/ml/machine-learning-databases/concrete/compressive/Co
 
 This study aims to define what a relatively strong concrete is in terms of compressive strength, then to see if we can predict the compressive strength of concrete based on the relative proportion of it's ingredients and it's age.
 
-I selected this dataset not only becasue it met the requirements for the Udacity Exporatory Data Analysis course final project, but in a former job, I advised on computer datalogger setup for a chemical engineer who performed a similar experiment.  This particular experiment was to test the compressive strength of concrete with varying quantities of synthetic and organic fiber additives.  This assigment was one of the specific moments in my IT career that led me to pursue a path in my career more related to science and analytics.  
+I selected this dataset not only becasue it met the requirements for the Udacity Exporatory Data Analysis course final project, but in a former job, I advised on computer datalogger setup for a chemical engineer who performed a similar experiment.  This particular experiment was to test the compressive strength of concrete with varying quantities of synthetic and organic fiber additives.  I did a little bit of research just now and found the results of that specific study here:  http://www.solomoncolors.com/ResourceDownload.aspx?id=3085.  I worked for a few months at Buckeye Cellulose during the product development cycle of what became known as the UltraFiber 500 concrete reinforcement product.  This assigment was one of the specific moments in my IT career that led me to pursue a path more related to science and data analytics.  
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE, References}
 # http://archive.ics.uci.edu/ml/
@@ -33,7 +33,7 @@ I selected this dataset not only becasue it met the requirements for the Udacity
 # https://stat.ethz.ch/R-manual/R-devel/library/base/html/nrow.html
 # http://www.cookbook-r.com/Graphs/Axes_(ggplot2)/
 # http://yihui.name/printr/
-#
+# http://www.statmethods.net/stats/regression.html
 
 ```
 
@@ -49,6 +49,7 @@ library(ggplot2)
 library(reshape2)
 library(gridExtra)
 library(knitr)
+library(GGally)
 require(scales)
 
 cc_palette<-"Paired"
@@ -66,50 +67,134 @@ cc<- read.csv('Concrete_Data.csv')
 
 # Univariate Plots Section
 
+### Input Data Summary
+```{r echo=FALSE, Summary}
+summary(cc)
+```
+
+All of the variables are quantitive.  Seven of the variables are weights in kg of components of a mixture.  There is also an age variable which ranges from 1 to 365 in days, so these samples vary in cure time with the median cure time at 28 days and a maximum of 365 days or 1 year.  That's a pretty big range, considering concrete that is only a few days old won't be expected to harden very much.  Another interesting observation is that slag, flyash, and plasticizer aren't present in all of the samples.  Interestingly, flyash has a median of zero, so most of the samples don't have any fly ash.
+
 ### Histograms showing the distribution of values in the  original set
-```{r echo=TRUE, Univariate_Plots1}
+```{r echo=FALSE, warning=FALSE, Univariate_Plots_strength_1}
 
-ggplot(aes(x=strength),data=cc) + geom_histogram(binwidth=10)
+ggplot(aes(x=strength),data=cc) + 
+  geom_histogram(binwidth=1) +
+  scale_x_continuous()
 
-#plot histograms
-ggplot(aes(x=cement),data=cc) + geom_histogram(binwidth=10)
-ggplot(aes(x=water),data=cc) + geom_histogram(binwidth=10)
-#ggplot(aes(x=slag),data=cc) + geom_histogram()
-#ggplot(aes(x=flyash),data=cc) + geom_histogram()
-#ggplot(aes(x=fine_agg),data=cc) + geom_histogram()
-#ggplot(aes(x=coarse_agg),data=cc) + geom_histogram()
-#ggplot(aes(x=plasticizer),data=cc) + geom_histogram()
-ggplot(aes(x=age),data=cc) + geom_histogram(binwidth=10)
+```
+
+Strength of the samples appears to be almost normally distributed, with most samples being in the 50 MPa range, with the strongest samples in the 60-90 MPa range. However it's slightly right-skewed. So I'll try to improve it.
+
+```{r echo=FALSE, warning=FALSE, Univariate_Plots_strength_2}
+
+ggplot(aes(strength),data=cc) + 
+  geom_histogram(binwidth=0.1) +
+  scale_x_sqrt()
+
+```
+
+Now the transformed strength appears to be normally distributed.  It looks like we could knock off a couple of outliers, and move it close to the center, though.
+
+```{r echo=FALSE, warning=FALSE, Univariate_Plots_strength_3}
+
+ggplot(aes(strength),data=cc) + 
+  geom_histogram(binwidth=0.1) +
+  scale_x_sqrt(limits=c(quantile(cc$strength,0.05),quantile(cc$strength,0.95)))
+
+```
+
+The final histogram appears to be close to a normal distribution.
+
+```{r echo=FALSE, warning=FALSE, Univariate_Plots_age_1}
+
+ggplot(aes(x=age),data=cc) + geom_histogram(binwidth=5)
 summary(cc$age)
-```
-
-
-### Histograms showing the makeup of the cement components in each sample
-Here we are showing histograms detailing the counts of occourences of levels of each component in each observation of the sample.  One particular observation is that there are often mixtures that may contain no slag, flyash or plasticizer, however the other components are always present.
-
-I think it would be interesting to see whether each of these optional additives contributes to stronger or weaker compressive strength, and compare strengths of samples with or without these components.
-
-
-```{r echo=TRUE, Univariate_Plots2}
-counts <- melt(cc,c('age','strength'))
-
-ggplot(aes(x=value),data=counts) + 
-  geom_histogram(binwidth=5) + 
-  facet_wrap( ~ variable,scales='free')
 
 ```
+
+The age histogram shows most tests are taken from samples that have cured for 50 days or less.  Very few samples were tested that were over 100 days old, however the oldest sample is 365 days, or 1 year old.  The median age is 28 days. Age is also quite a bit right skewed, so I'll apply the log10 transformation there as well.
+
+```{r echo=FALSE, warning=FALSE, Univariate_Plots2.1}
+
+ggplot(aes(x=age),data=cc) + geom_histogram(binwidth=0.1) + scale_x_log10()
+
+```
+
+log10(age) looks more normally distributed with the mean age moving to the center of the distribution, so I'll keep this transformation for the model.
 
 ### Check For the Absence of Components
-From the histograms above we can see that several components are showing that they have zero presence in a lot of the samples.  These must be optional additives, as water, cement, and aggregates are always ingredients.  Here we will see how many samples omit additives such as slag, plasticizer, and flyash.
 
-```{r echo=TRUE, Univariate_Plots3}
+From the data summary above we can see that several components are showing that they have zero presence in a lot of the observations.  These must be optional additives, as water, cement, and aggregates are always ingredients.  Here we will see how many samples omit additives such as slag, plasticizer, and flyash.
+
+
+```{r echo=FALSE, warning=FALSE, Univariate_Plots12}
 #colSums(cc==0)
-kable(colSums(cc==0))
+
+kable(colSums(cc==0), col.names = c("Zeros"))
+```
+
+Of the 1030 samples more than half don't contain flyash, and nearly one third to one half of them are missing either plasticizer or slag.
+
+```{r echo=FALSE, warning=FALSE, Univariate_Plots11}
+#counts <- melt(cc,c('age','strength'))
+
+#ggplot(aes(x=value),data=counts) + 
+#  geom_histogram(binwidth=5) + 
+#  facet_wrap( ~ variable,scales='free')
 
 ```
 
-### Count occurences of values in the cement ratio
-```{r echo=FALSE, Population_Blends}
+
+```{r echo=FALSE, warning=FALSE, Blend_ID}
+
+# Add a number to represent each blend (1-8)
+cc<-transform(cc,additive_coef=(ifelse(slag,4,0)) + (ifelse(plasticizer,2,0)) + (ifelse(flyash,1,0)) +1)
+#cc$additive_coef<-factor(cc$additive_coef)
+
+ggplot(data=cc,aes(x=factor(1),fill=factor(additive_coef))) + 
+  geom_bar() +
+  scale_fill_discrete(name = "Blend") +
+  ggtitle("Population Composition by Blend Type")
+  scale_colour_brewer( palette=cc_palette) #+
+#  coord_polar(theta = 'y')
+```
+
+
+```{r echo=FALSE, warning=FALSE, Blend_Totals}
+
+addblends<-function(sl,pl,fa) {
+  
+    # Return a count of rows from a 
+    # subset based on three passed in variables.
+    return (nrow(subset(cc,additive_coef==(ifelse(sl,4,0)) + 
+                        (ifelse(pl,2,0)) + 
+                        (ifelse(fa,1,0)) + 1)))
+  
+}
+
+# Create a table to support the creation of a pie chart.
+Blend<-seq(1,8)
+Slag<-c(FALSE,FALSE,FALSE,FALSE,TRUE,TRUE,TRUE,TRUE)
+Plasticizer<-c(FALSE,FALSE,TRUE,TRUE,FALSE,FALSE,TRUE,TRUE)
+FlyAsh<-c(FALSE,TRUE,FALSE,TRUE,FALSE,TRUE,FALSE,TRUE)
+
+suppressWarnings(rm(blends))
+blends <- data.frame(Blend,Slag,Plasticizer,FlyAsh)
+blends$Obs_Count<-apply(blends[,c('Slag','Plasticizer','FlyAsh')],1,function(x) {addblends(x[1],x[2],x[3])})
+
+kable(blends,caption = "Table showing the various identified blends based on the presence of additives")
+#blends<-melt(blends,c('Obs_Count','Blend'))
+
+```
+
+I decided to create classifications for blends based on the presence or absence of combinations of the optional additives, since we have three optional additives, we have 8 possible blend combinations.  For this study, I label the blends 1 through 8, where blend 1 has none of the optional additives and blend 8 has all of them.  Blends 1-4 have no slag. 5-8 have slag.  Blends 3,4,7 and 8 contain plasticizer, and even numbered blends contain flyash.
+
+This bar plot and table above show the makeup of the test poulation by blend classification.  As you can see the blends are not evenly represented.  In fact blends 2 and 3 have fewer than 30 observations between them, and there are no samples representing blend 6, so we'll have to work without it.
+
+
+### Mixture As a Ratio
+
+```{r echo=FALSE, warning=FALSE, Mixture_Ratios}
 # rcounts <- melt(c_ratios,c('age','strength'))
 # summary(rcounts)
 
@@ -129,67 +214,260 @@ make_ratio <- function(c_sample,denominator) {
                      ))
 }
 
-# Add a number to represent each blend (1-8)
-cc<-transform(cc,additive_coef=(ifelse(slag,4,0)) + (ifelse(plasticizer,2,0)) + (ifelse(flyash,1,0)) +1)
 
 #Make dataframes based on two ratios to compare
 c_ratios <- make_ratio(cc,cc$cement)
 w_ratios <- make_ratio(cc,cc$water)
 
+#Create  ratios based on the total weight instead of one ingredient
+tot_ratios <- transform(cc,tot_weight=(water + 
+                                         cement + 
+                                         fine_agg + 
+                                         coarse_agg + 
+                                         flyash + 
+                                         slag + 
+                                         plasticizer))
 
-addblends<-function(sl,pl,fa) {
-  
+#tot_ratios <- transform(cc,hydration=((water) / (cement + 
+#                                                   fine_agg + 
+#                                                   coarse_agg + 
+#                                                   flyash + 
+#                                                   slag + 
+#                                                   plasticizer)))
 
-    return (nrow(subset(c_ratios,additive_coef==(ifelse(sl,4,0)) + 
-                        (ifelse(pl,2,0)) + 
-                        (ifelse(fa,1,0)) + 1)))
-  
-}
+tot_ratios <- make_ratio(tot_ratios,tot_ratios$tot_weight)
+#dry_ratios <- make_ratio(tot_ratios,tot_ratios$hydration)
 
-# Create a table to support the creation of a pie chart.
-Blend<-seq(1,8)
-Slag<-c(FALSE,FALSE,FALSE,FALSE,TRUE,TRUE,TRUE,TRUE)
-Plasticizer<-c(FALSE,FALSE,TRUE,TRUE,FALSE,FALSE,TRUE,TRUE)
-FlyAsh<-c(FALSE,TRUE,FALSE,TRUE,FALSE,TRUE,FALSE,TRUE)
+#ggpairs(c_ratios)
 
-suppressWarnings(rm(blends))
-blends <- data.frame(Blend,Slag,Plasticizer,FlyAsh)
-blends$Obs_Count<-apply(blends[,c('Slag','Plasticizer','FlyAsh')],1,function(x) {addblends(x[1],x[2],x[3])})
-
-kable(blends,caption = "Table showing the various identified blends based on the presence of additives")
-blends<-melt(blends,c('Obs_Count','Blend'))
-
-ggplot(data=cc,aes(x=factor(1),fill=factor(additive_coef))) + 
-  geom_bar() +
-  scale_fill_discrete(name = "Blend") +
-  scale_colour_brewer( palette=cc_palette) +
-  coord_polar(theta = 'y')
 ```
+
+Since all of the components in each sample that are ingredients in the mixture are measured in kg, I though it would only make sense to compare them as a ratio.  That led me to the question: What ratio?  I think there are a few valid choices which might have value.  I tried a ratio of each ingredient to the water weight, a ratio to the cement weight, and a ratio to the total weight of the sum of the ingredients' weights.
+
+I have a feeling there are some complex relationships going on here, and some components may have a stronger relationship with hydration, while others, may have a more interesting relationship with their proportion of the cement.  For example, if there was some optimal blend between cement and one of the additives to produce a strong crystaline molecular structure, as tempered steel has with carbon, the cement ratio may have more value. Where another additive may nave a stronger association with it's concentration in relation to water.
+
+To limit the scope of this project, I'm going to choose one and focus most of the work on it.  I think a more complex model could be built that took advantange of multiple transformations of the dataset.  
+
+I finally decided to use the ratio of each components to the weight in cement.  My my reasoning was that this is usually how, I think, cement is measured when mixed.  But this was a slight source of struggle to pick the best ratio, and I examined all three before settling with the cement ratio.  Later in the correlation plots was really when I decided.  The correlations seemed to make the most sense like there may be a pattern there.  So I selected it a little bit intuitively, without a quantitive basis, but I roughly checked all three and think there are some valuable properties in each ratio
+
+### Cement Ratios
+
+#### Ratio summary
+```{r echo=FALSE, warning=FALSE, Cement1}
+summary(c_ratios)
+```
+ 
+Above is a summary of the data in terms of each component's ratio to the level of cement.  The units for each component weight in this ratio dataset are in kg per 1kg of cement.
+
+#### Cement Plots
+```{r echo=FALSE, warning=FALSE, Cement2}
+
+ggplot(aes(x=cement),data=cc) + geom_histogram(binwidth=10)
+
+```
+
+After the ratio, everything will be compared against cement, which will equal 1.  I wanted to summarize the cement levels in the study before making ratios and flattening the cement weights.  
+
+The histogram showing the cement weights appears to be approximately normally distributed, however slightly right-skewed.  
+
+The wide range seems to say this mixtures are going to vary a great deal in total mixture weight.  It seems like this might introduce other factors like the size and shape of the test sample.  The amount of time the concrete mixture was allowed to set before each sample was poured.  The amount of surface area that was exposed to air before it was poured.  Factors like that might be introduced, which aren't accounted for in the data.
+  
+
+```{r echo=FALSE, warning=FALSE, Cement3}
+
+ggplot(aes(x=cement),data=cc) + geom_histogram() +
+  scale_x_log10(limits=c(quantile(cc$cement,0.1),
+                         quantile(cc$cement,0.9))) +
+    ggtitle("Log10(cement) Histogram")
+
+```
+
+Adding log10 transformation to the cement plot and it appears to bring it closer to a normal distribution.
+
+### Histograms Showing the Makeup of the Observations in Relation to Cement Weight
+
+In this section I addded several histograms to detail the counts of occourences of levels of each component in relation to the weight of cement in each observation of the study.  
+
+```{r echo=FALSE, warning=FALSE, Water1}
+ggplot(aes(x=water),data=c_ratios) + geom_histogram(binwidth=0.05) +
+  scale_x_continuous()
+```
+
+Water looks a little left skewed, and there are a few outliers.  It could be improved, I think.
+
+```{r echo=FALSE, warning=FALSE, Water2}
+ggplot(aes(x=water),data=c_ratios) + geom_histogram(binwidth=0.05) + 
+  scale_x_log10(breaks=seq(1,5,1),
+                limit=c(quantile(c_ratios$water,0.05),
+                        quantile(c_ratios$water,0.95))) +
+  ggtitle("Log10(water) Histogram")
+
+ggplot(aes(x=water),data=c_ratios) + geom_histogram(binwidth=0.05) + 
+  scale_x_sqrt(breaks=seq(1,5,1),
+               limit=c(quantile(c_ratios$water,0.05),
+                       quantile(c_ratios$water,0.95))) +
+    ggtitle("Sqrt(water) Histogram")
+
+```
+
+The log10 looks to put more of the weight in the chart in the center.  The sqrt transformation leaves a lot of the distribution on the left side.  I'm going to consider the log10 transformation when building the linear model.
+
+
+```{r echo=FALSE, warning=FALSE, Slag1}
+
+ggplot(aes(x=slag),data=c_ratios) + geom_histogram(binwidth=0.05) +
+  scale_x_continuous()
+```
+
+Slag is not always present, but it looks like many of the samples are in the 0.5 - 1.5kg per kg of cement range.  Because of the large number of zero values, I'm not sure the non-zero ones on the low-end are outliers, though. It's just that a lot of samples don't have any slag.
+
+```{r echo=FALSE, warning=FALSE, Slag2}
+
+ggplot(aes(x=slag),data=c_ratios) + geom_histogram(binwidth=0.05) +
+ scale_x_continuous(limits=c(0.1,quantile(c_ratios$slag,0.95))) +
+ ggtitle("Slag Histogram Trimmed of Zeros and Outliers")
+ 
+ggplot(aes(x=slag),data=c_ratios) + geom_histogram(binwidth=0.05) +
+ scale_x_log10(limits=c(0.1,quantile(c_ratios$slag,0.95)),breaks=seq(0.4,1.2,0.4))+
+ ggtitle("log10(slag) Histogram")
+ 
+ggplot(aes(x=slag),data=c_ratios) + geom_histogram(binwidth=0.05) +
+ scale_x_sqrt(limits=c(0.1,quantile(c_ratios$slag,0.95)))+
+ ggtitle("sqrt(slag) Histogram")
+ 
+```
+
+I trimmed the outliers and tried log10 and sqrt transformations above.  Log10 created a left-skewed distribution, but sqrt(slag) looked more normally distributed, so I'm going to make a note of that. None of the distributions looked all that great without trimming a lot of the lower outliers to focus on the group above zero.
+
+```{r echo=FALSE, warning=FALSE, Flyash1}
+
+ggplot(aes(x=flyash),data=c_ratios) + geom_histogram(binwidth=0.05)
+
+```
+
+Flyash is not present in many of the samples, but like slag, many of the samples that do have it are in the 0.5 - 1kg per kg of cement range.  With a lot of zeros the distribution looks similar to slag.  I'll try a similar treatment and try to shape it up a bit.
+
+```{r echo=FALSE, warning=FALSE, Flyash2}
+
+ggplot(aes(x=flyash),data=c_ratios) + geom_histogram(binwidth=0.05) +
+ scale_x_continuous(limits=c(0.1,quantile(c_ratios$flyash,0.95)),breaks=seq(0.25,1,0.25)) +
+ ggtitle("Flyash Histogram Trimmed of Zeros and Outliers")
+ 
+ggplot(aes(x=flyash),data=c_ratios) + geom_histogram(binwidth=0.05) +
+ scale_x_log10(limits=c(0.1,quantile(c_ratios$flyash,0.95)),breaks=seq(0.25,1,0.25))+
+ ggtitle("log10(flyash) Histogram")
+ 
+ggplot(aes(x=flyash),data=c_ratios) + geom_histogram(binwidth=0.05) +
+ scale_x_sqrt(limits=c(0.1,quantile(c_ratios$flyash,0.95)),breaks=seq(0.25,1,0.25))+
+ ggtitle("sqrt(flyash) Histogram")
+```
+
+Both sqrt(flyash) and log10(flyash) transformations look better than the non-transformed value, with more normal distributions, however sqrt(flyash)$is more normally distributed, so I'm going to start with that in our linear model. In observations that contain flyash it looks like the mean is around 0.38kg per kg of cement.
+
+```{r echo=FALSE, warning=FALSE, Plasticizer1}
+
+ggplot(aes(x=plasticizer),data=c_ratios) + geom_histogram(binwidth=0.01)
+
+```
+
+```{r echo=FALSE, warning=FALSE, Plasticizer2}
+
+ggplot(aes(x=plasticizer),data=c_ratios) + 
+  geom_histogram(binwidth=0.002) +
+  scale_x_continuous(limits=c(0.01,quantile(c_ratios$plasticizer,0.95))) +
+  ggtitle("Pasticizer Histogram with Zeros and Outliers Removed")
+
+ggplot(aes(x=plasticizer),data=c_ratios) + 
+  geom_histogram(binwidth=0.01) +
+  scale_x_log10(limits=c(0.01,quantile(c_ratios$plasticizer,0.95)),
+                breaks=seq(0.01,0.06,0.01)) +
+  ggtitle("log10(pasticizer) Histogram")
+ 
+ ggplot(aes(x=plasticizer),data=c_ratios) + 
+   geom_histogram(binwidth=0.005) +
+   scale_x_sqrt(limits=c(0.01,quantile(c_ratios$plasticizer,0.95)),
+                breaks=seq(0.01,0.06,0.01)) +
+   ggtitle("sqrt(pasticizer) Histogram")
+
+```
+
+Many samples don't contain plasticizer, but there is a grouping of samples that do form a skewed distribution with a few outliers.  The plot using sqrt(plasticizer) seems to show the most normalized distribution, so I'm going to try using that transformation.  The mean level of plasticizer in samples that do have plasticizer appears to be a little over 0.03kg per kg of cement. 
+
+```{r echo=FALSE, warning=FALSE, Fine_agg1}
+
+ggplot(aes(x=fine_agg),data=c_ratios) + geom_histogram(binwidth=0.2)
+
+```
+
+```{r echo=FALSE, warning=FALSE, Fine_agg2}
+
+ggplot(aes(x=fine_agg),data=c_ratios) + 
+   geom_histogram(binwidth=0.02) +
+   scale_x_log10(limits=c(quantile(c_ratios$fine_agg,0.05),
+                          quantile(c_ratios$fine_agg,0.95)),
+                 breaks=seq(1,6,1)) +
+   ggtitle("log10(fine_agg) Histogram")
+ 
+ggplot(aes(x=fine_agg),data=c_ratios) + 
+  geom_histogram(binwidth=0.05) +
+  scale_x_sqrt(limits=c(quantile(c_ratios$fine_agg,0.05),
+                        quantile(c_ratios$fine_agg,0.95)),
+               breaks=seq(1,6,1)) +
+  ggtitle("sqrt(fine_agg) Histogram")
+```
+
+The amount of fine aggregate appears to be somewhat normally distributed. Unlike some of the additives fine aggregate is present in every sample.  Log10(fine_agg) seems to bring together the values around the median a little better.  The mean level of fine aggregate appears to be around 3kg per kg of cement.
+
+```{r echo=FALSE, warning=FALSE, Coarse_Agg1}
+
+ggplot(aes(x=coarse_agg),data=c_ratios) + geom_histogram(binwidth=0.2)
+```
+
+```{r echo=FALSE, warning=FALSE, Coarse_Agg2}
+
+ggplot(aes(x=coarse_agg),data=c_ratios) + 
+  geom_histogram(binwidth=0.02) +
+  scale_x_log10(limits=c(quantile(c_ratios$coarse_agg,0.05),quantile(c_ratios$coarse_agg,0.95)),
+                 breaks=seq(1,8,1)) +
+  ggtitle("log10(coarse_agg) Histogram")
+ 
+ggplot(aes(x=coarse_agg),data=c_ratios) + 
+  geom_histogram(binwidth=0.05) +
+  scale_x_sqrt(limits=c(quantile(c_ratios$coarse_agg,0.05),quantile(c_ratios$coarse_agg,0.95)),
+                 breaks=seq(1,8,1)) +
+  ggtitle("sqrt(coarse_agg) Histogram")
+```
+
+The amount of coarse aggregate also appears to be somewhat normally distributed.  It's also present in every sample.  The Log10(course_agg), like the fine aggregate seems to bring the distribution together a little bit. The mean ratio of coarse aggregate weight to cement is around 4:1.
+
+
 
 
 # Univariate Analysis
 
 ### What is the structure of your dataset?
-Number of observations: 1030
-Number of input Attributes: 8
-Number of output Variables: 1
+
+Number of observations: **1030**
+Number of input Attributes: **8**
+Number of output Variables: **1**
 
 ### What is/are the main feature(s) of interest in your dataset?
 
+The original dataset before transformation:
 
-1. Cement kg in mixture -- Input Variable
-2. Blast  kg in mixture -- Input Variable
-3. Fly Ash kg in mixture -- Input Variable
-4. Water  kg in mixture -- Input Variable
-5. Superplasticizer  kg in mixture -- Input Variable
-6. Coarse Aggregate  kg in mixture -- Input Variable
-7. Fine Aggregate  kg in mixture -- Input Variable
-8. Age Day (1~365) -- Input Variable
+1. **Cement** kg in mixture -- Input Variable
+2. **Blast Furnace Slag** kg in mixture -- Input Variable
+3. **Fly Ash** kg in mixture -- Input Variable
+4. **Water**  kg in mixture -- Input Variable
+5. **Superplasticizer**  kg in mixture -- Input Variable
+6. **Coarse Aggregate**  kg in mixture -- Input Variable
+7. **Fine Aggregate**  kg in mixture -- Input Variable
+8. **Age** Day (1~365) -- Input Variable
 
-Output: Concrete MPa (Megapascals) -- Output Variable 
+Output: **Concrete** MPa (Megapascals) -- Output Variable 
 
 ### What other features in the dataset do you think will help support your investigation into your feature(s) of interest?
-I think the relationships between the components will make a difference.  The ratio of water to dry ingredients for example and the presence or absence of optional additives and the roles they play in improving the strength of a concrete mixture.
+I think the relationships between the components will make a difference.  The cement to other ingredients, for example, and the presence or absence of optional additives and the roles they play in improving the strength of a concrete mixture.
 
 ### Did you create any new variables from existing variables in the dataset?
 I created binary variables to denote the presence or absence of an optional additive, and I also added another variable to classify blends into groups based on the presence of different combinations of the optional additives.
@@ -199,88 +477,252 @@ All of the optional additives had a lot of zero values in the observations.  I c
 
 I like to bake bread, and it's all about the ratio of dry ingredients to wet ingredients, so I wanted to experement with ratios.   I took ratios of the components since they were all measured in weights.  
 
-I first tried a ratio based on the amount of water in the mixture, or hydration.   I liked it, but I wasn't seeng really close-looking relationships using a scatterplot matrix, so I wanted to explore a little more.  I also tried calculating each ingredient as a portion of the total weight of the entire mixture, but it didn't look very strong on the scatterplot matrix either.  The one that showed the best correlations was to base the ratio on the weight of the cement in the mixutre.  So I converted the weitghts to Kg per Kg of cement.
+I first tried a ratio based on the amount of water in the mixture.   I liked it, but I wasn't seeng really close-looking relationships using a scatterplot matrix, so I wanted to explore a little more.  I also tried calculating each ingredient as a portion of the total weight of the entire mixture, but it didn't look very strong on the scatterplot matrix either.  The one that showed the best looking correlations to me, was to base the ratio of each ingredient to the weight of the cement in the observation.  So I converted the weitghts to Kg per Kg of cement.
 
 
 # Bivariate Plots Section
+Using the three ratios I wanted to look at the correlation matrices for each, and check the correlations of the seven variables that make up the concrete mixtures with the strength variable.  Then choose a ratio that will give us the best results to use in a simple multiple linear regression model.
+
+### Correlation Matrix
+```{r echo=FALSE, warning=FALSE, Correlation_Matrix1}
+ggcorr(w_ratios, method = c("pairwise", "pearson"), pallette = "RdYlGn", label = TRUE, cex=2.5) +
+ ggtitle("Ratio of Water")
+```
+
+In the above correlation matrix, I'm looking for correlations based on the ratio of each ingredient to the weight of the **water** in the mixture.  Interestingly besides the ratio of cement and age, plasticizer shows the largest correlation with strength here.
+
+```{r echo=FALSE, warning=FALSE,Correlation_Matrix2}
+ggcorr(c_ratios, method = c("pairwise", "pearson"), pallette = "RdYlGn", label = TRUE, cex=2.5) +
+  ggtitle("Ratio of Cement")
+```
+
+In the above correlation matrix, I'm looking for correlations of strength based on the ratio of each ingredient to the weight of the **cement** in the mixture.  This matrix shows several strong correlations with strength, including water and aggregates with slightly weaker correlation to additives.
 
 
-### Pair Analysis Using Cement and Water Ratios
-```{r echo=TRUE, Bivariate_Plots}
+```{r echo=FALSE, warning=FALSE, Correlation_Matrix3}
+ggcorr(tot_ratios, method = c("pairwise", "pearson"), pallette = "RdYlGn", label = TRUE, cex=2.5) +
+  ggtitle("Ratio of Total")
+```
+
+### Summary of Total Weights of the Observations.
+```{r echo=FALSE, Correlation_Matrix4}
+summary(tot_ratios$tot_weight)
+```
+
+In the above correlation matrix, I'm looking for correlations of strength based on the ratio of each ingredient to the **total weight** of the all ingredients in the mixture.  Interestingly this shows a stronger correlation of strength to coarse aggregate, pasticizer, and slag.  
+
+
+```{r echo=FALSE, warning=FALSE, Bivariate_Plots}
 #water ratio
-pairs(w_ratios)
+#pairs(w_ratios)
 
 #cement ratio
-pairs(c_ratios)
+#pairs(c_ratios)
 
 
 
-#pairs(data=w_ratios,~ strength + log10(age) + log10(water) + sqrt(flyash) + sqrt(slag) + sqrt(plasticizer) + coarse_agg + fine_agg, lower.panel=panel.smooth, pch=20, main="Cement Mixture Scatterplot Matrix "  )
+# pairs(data=w_ratios,~ strength + log10(age) + log10(water) + sqrt(flyash) + sqrt(slag) + sqrt(plasticizer) + coarse_agg + fine_agg, lower.panel=panel.smooth, pch=20, main="Cement Mixture Scatterplot Matrix "  )
 
-pairs(data=c_ratios,~ strength + 
-                        log10(age) + 
-                        log10(water) + 
-                        sqrt(flyash) + 
-                        sqrt(slag) + 
-                        sqrt(plasticizer) + 
-                        coarse_agg + 
-                        fine_agg, 
-                    lower.panel=panel.smooth, 
-                    pch=20, 
-                    main="Cement Mixture Scatterplot Matrix"  )
+#ggpairs(data=c_ratios,~ strength + 
+#                        log10(age) + 
+#                        log10(water) + 
+#                        sqrt(flyash) + 
+#                        sqrt(slag) + 
+#                        sqrt(plasticizer) + 
+#                        coarse_agg + 
+#                        fine_agg, 
+#                    lower.panel=panel.smooth, 
+#                    pch=20, 
+#                    main="Cement Mixture Scatterplot Matrix"  )
+
+#ggpairs(data=c_ratios)
+#ggpairs(c_ratios, 
+#  upper = list(params = c(size = 4)),
+#  diag=list(continuous="bar", params=c(colour="blue")),
+#  lower = list(continuous = "smooth", params = c(method = "loess", fill = "blue"))
+#)
 
 ```
 
+### Age vs Strength
+```{r echo=FALSE, warning=FALSE, Strength_Age1}
+
+ggplot(aes(x=age,y=strength),data=c_ratios) +
+  geom_point( alpha=0.2,na.position=position_jitter(w=0.1,h=0.1)) +
+  geom_smooth(method='loess',na.rm=TRUE) + 
+  scale_x_continuous(limits=c(1,365)) +
+  scale_y_continuous()
+
+fit1 <- lm(strength ~ age,
+                        data=c_ratios)
+summary(fit1)
+```
+
+Interestingly, as the histogram tests showed, it looks like there is some kind of logarithmic relationship between age and strength.  We can probably straighten this some by using transforms like we did with the univariate plots.  
+
+Since age has have nothing to do with the mixture, I decided to check it out on the linear model with only strength to see what happens.   
+
+With no transformations we show an R^2^ of 0.11.  Based on the curve in that plot, and the transformations on the age and strength histograms, I think we can do better.
+
+```{r echo=FALSE, warning=FALSE, Strength_Age2}
+
+ggplot(aes(x=age,y=strength),data=c_ratios) +
+  geom_point( alpha=0.2,na.rm=TRUE,position=position_jitter(w=0.1,h=0.1)) +
+  geom_smooth(method='loess',na.rm=TRUE) + 
+  scale_x_log10(limits=c(1,365)) +
+  scale_y_continuous()
+
+fit2 <- lm(log10(strength) ~ age,
+                        data=c_ratios)
+summary(fit2)
+
+```
+
+Transforming age using log10 straightens out the plot a little bit.  Trimming the outliers clears up the overplotting from the first chart.  Also the linear model gives a slightly better R^2^ score.
+
+```{r echo=FALSE, warning=FALSE, Strength_Age3}
+
+ggplot(aes(x=age,y=strength),data=c_ratios) +
+  geom_point( alpha=0.2,na.rm=TRUE,position=position_jitter(w=0.1,h=0.1)) +
+  geom_smooth(method='loess',na.rm=TRUE) + 
+  scale_x_log10(limits=c(1,365)) +
+  scale_y_log10()
+
+fit3 <- lm(log10(strength) ~ log10(age),
+                        data=c_ratios)
+summary(fit3)
 
 
-# Cement ratio plots
-```{r echo=TRUE, Bivariate_Plots5}
+```
+
+Transforming both age and strength using log10 straightens out the plot a little bit more.  Also the linear model gives a much better R^2^ score of 0.35 when transforming both axes with log10().
+
+## Cement ratio plots
+
+For the following plots I chose to use the cement ratio since it shows some good strong correlations on water and aggregates, and I thing concrete is usually mixed per the amount of cement.
+
+### Hydration vs Strength
+
+```{r echo=FALSE, warning=FALSE, Bivariate_Plots5}
 
 ggplot(aes(x=water,y=strength),data=c_ratios) + 
-  geom_point( alpha=0.4,na.rm=TRUE) + 
+  geom_point(alpha=0.4,na.rm=TRUE,position=position_jitter(w=0.1,h=0.1)) + 
   geom_smooth(method='loess',na.rm=TRUE) + 
-  scale_colour_brewer( palette=cc_palette) +
-  scale_x_log10(limits=c(0.25,quantile(c_ratios$water,0.9)),breaks=seq(0.25,1,0.25)) +
-  scale_y_sqrt()
+  scale_x_continuous(limits=c(quantile(c_ratios$water,0.1),
+                              quantile(c_ratios$water,0.9)),
+                    breaks=seq(0.25,1,0.25)) +
+  scale_y_log10()
 
-ggplot(aes(x=slag,y=strength),data=c_ratios) + 
-  geom_point( alpha=0.2,na.rm=TRUE) + 
-  geom_smooth(method='loess',na.rm=TRUE) + 
-  scale_colour_brewer( palette=cc_palette) +
-  scale_x_sqrt(limits=c(0.25,quantile(c_ratios$slag,0.9)),breaks=c(0.45,1.0,0.15)) +
-  scale_y_sqrt()
-
-ggplot(aes(x=flyash,y=strength),data=c_ratios) + 
-  geom_point( alpha=0.4,na.rm=TRUE) + 
-  geom_smooth(method='loess',na.rm=TRUE) + 
-  scale_colour_brewer( palette=cc_palette) +
-  scale_x_sqrt(limits=c(0.25,quantile(c_ratios$flyash,0.9))) +
-  scale_y_sqrt()
-
-ggplot(aes(x=plasticizer,y=strength),data=c_ratios) + 
-  geom_point( alpha=0.4,na.rm=TRUE) + 
-  geom_smooth(method='loess',na.rm=TRUE) + 
-  scale_colour_brewer( palette=cc_palette) +
-  scale_x_sqrt(limits=c(0.025,quantile(c_ratios$plasticizer,0.9))) +
-  scale_y_sqrt()
-
-ggplot(aes(x=age,y=strength),data=c_ratios) + 
-  geom_point( alpha=0.4,na.rm=TRUE) + 
-  geom_smooth(method='loess',na.rm=TRUE) + 
-  scale_colour_brewer( palette=cc_palette) +
-  scale_x_log10(limits=c(1,365)) +
-  scale_y_sqrt()
-
-
+fit1 <- lm(log10(strength) ~ water,
+                        data=c_ratios)
+summary(fit1)
 
 ```
 
-#Compressive Strength of Each Blend
-```{r echo=TRUE, Bivariate_Plots2.2}
+First, I wanted to check the linearity of the relationship between log10(strength), which plots nicely with age and water.  Without transformation these produce a distinctly curved relationship, so I want to check a couple more transformations to compare. The linear model shows an R^2^ of 0.24 with no transformation on water.
+
+```{r echo=FALSE, warning=FALSE, Bivariate_Plots5.1}
+ggplot(aes(x=water,y=strength),data=c_ratios) + 
+  geom_point(alpha=0.4,na.rm=TRUE,position=position_jitter(w=0.1,h=0.1)) + 
+  geom_smooth(method='loess',na.rm=TRUE) + 
+  scale_x_log10(limits=c(0.25,quantile(c_ratios$water,0.9)),breaks=seq(0.25,1,0.25)) +
+  scale_y_log10()
+
+fit2 <- lm(log10(strength) ~ log10(water),
+                        data=c_ratios)
+summary(fit2)
+
+```
+
+Adding log10 to the water axis straightens out the plot and improves the R^2^ score of the linear model slightly to 0.26, so I think water may benefit from this transformation.
+
+```{r echo=FALSE, warning=FALSE, Bivariate_Plots5.2}
+
+ggplot(aes(x=water,y=strength),data=c_ratios) + 
+  geom_point(alpha=0.4,na.rm=TRUE,position=position_jitter(w=0.1,h=0.1)) + 
+  geom_smooth(method='loess',na.rm=TRUE) + 
+  scale_x_sqrt(limits=c(0.25,quantile(c_ratios$water,0.9)),breaks=seq(0.25,1,0.25)) +
+  scale_y_log10()
+
+fit3 <- lm(log10(strength) ~ sqrt(water),
+                        data=c_ratios)
+summary(fit3)
+```
+
+Transforming water with sqrt also seems to straighten out the plot somewhat, when compared with using water with no transformation, however it produces a more non-linear relationship than log10(water) does.  Also the R^2^ score is slightly lower when using sqrt(water) at 0.25, meaning the linear model doesn't have quite as tight of a correlation as it does when using log10(water).  It's close, but I'm going to stick with log10(water) with a 0.26 R^2^ for the linear model.
+
+### Slag vs Strength
+
+```{r echo=FALSE, warning=FALSE, Bivariate_Plots6}
+
+ggplot(aes(x=slag,y=strength),data=c_ratios) + 
+  geom_point( alpha=0.2,na.rm=TRUE,position=position_jitter(w=0.01,h=0.01)) + 
+  geom_smooth(method='loess',na.rm=TRUE) + 
+  scale_x_sqrt(limits=c(0.25,quantile(c_ratios$slag,0.9)),breaks=c(0.45,1.0,0.15)) +
+  scale_y_sqrt()
+```
+
+This plot shows the relationship of slag vs strength.  It has already been transformed based on the tests in the Univariate Plots section.  Interestingly it shows that there seems to be a 'sweet spot' for slag around 0.46kg per kg of cement.  The relationship is not quite linear, but looks straighter than when the variables aren't transformed. This model would probably be improved if we could introduce a function that more closely matched this curve for slag.
+
+### Flyash vs Strength
+
+```{r echo=FALSE, warning=FALSE, Bivariate_Plots7}
+ggplot(aes(x=flyash,y=strength),data=c_ratios) + 
+  geom_point( alpha=0.4,na.rm=TRUE,position=position_jitter(w=0.01,h=0.01)) + 
+  geom_smooth(method='loess',na.rm=TRUE) + 
+  scale_x_sqrt(limits=c(0.25,quantile(c_ratios$flyash,0.9))) +
+  scale_y_sqrt()
+```
+
+Fly ash seems to negatively affect strength slightly.  The strongest samples with flyash are the ones with the least in relation to the proportion of cement.
+
+### Plasticizer vs Strength
+
+```{r echo=FALSE, warning=FALSE, Bivariate_Plots8}
+ggplot(aes(x=plasticizer,y=strength),data=c_ratios) + 
+  geom_point( alpha=0.4,na.rm=TRUE,position=position_jitter(w=0.1,h=0.1)) + 
+  geom_smooth(method='loess',na.rm=TRUE) + 
+  scale_x_sqrt(limits=c(0.025,quantile(c_ratios$plasticizer,0.9))) +
+  scale_y_sqrt()
+```
+
+The plasticizer vs strengh chart looks almost flat, however the strongest blend appears to be around 0.32 kg per kg of cement.  More plasticizer than that seems to slightly weaken the blend.
+
+### Fine Aggregate vs Strength
+```{r echo=FALSE, warning=FALSE, Bivariate_Plots11}
+ggplot(aes(x=fine_agg,y=strength),data=c_ratios) +
+  geom_point( alpha=0.2,na.rm=TRUE,position=position_jitter(w=0.1,h=0.1)) +
+  geom_smooth(method='loess',na.rm=TRUE) + 
+  scale_x_log10(limits=c(quantile(c_ratios$fine_agg,0.1),quantile(c_ratios$fine_agg,0.9)), breaks=seq(1,4,0.5)) +
+  scale_y_sqrt(limits=c(quantile(c_ratios$strength,0.1),quantile(c_ratios$strength,0.9)), breaks=seq(10,100,10))
+```
+
+Like water and flyash, adding more than enough fine aggregate can weaken a concrete blend.  
+
+### Coarse Aggregate vs Strength
+```{r echo=FALSE, warning=FALSE, Bivariate_Plots12}
+ggplot(aes(x=coarse_agg,y=strength),data=c_ratios) +
+  geom_point( alpha=0.2,na.rm=TRUE,position=position_jitter(w=0.1,h=0.1)) +
+  geom_smooth(method='loess',na.rm=TRUE) + 
+  scale_x_log10(limits=c(quantile(c_ratios$coarse_agg,0.1),quantile(c_ratios$coarse_agg,0.9)), breaks=seq(1,6,0.5)) +
+  scale_y_sqrt(limits=c(quantile(c_ratios$strength,0.1),quantile(c_ratios$strength,0.9)), breaks=seq(10,100,10))
+```
+
+Like fine aggregate, adding more than enough coarse aggregate can also weaken a concrete blend.  It seems that some aggregate is needed, but too much in relation to the cement will weaken the blend.
+
+## Compressive Strength of Each Blend
+
+```{r echo=FALSE, warning=FALSE, Bivariate_Plots2.2}
 
 ggplot(aes(x=factor(additive_coef), y=strength),data=c_ratios) + geom_boxplot() + scale_x_discrete(breaks=seq(1,8)) + xlab('Concrete Blend') + ylab('Strength') + scale_colour_brewer( palette=cc_palette) 
 
 ```
+
+Following the trends in the previous charts, it looks like blends with no flyash, but some plasticizer and slag tend to be stronger than blends with no additives or blends that include fly ash.  
+
+Blend #7 appears to be the strongest blend, which includes plasticizer and slag, but no fly ash.  Blend #8 is similar to #7 but contains flyash and is weaker.  Similar to #7 and #8, #3 contains no flyash and #4 contains flyash.  
+
+Interestingly when only fly ash is present, but no plasticizer or slag as in blend #2, the flyash blends appear to be slightly stronger.  Is there some incompatibility between plasticizer and flyash?
 
 
 # Bivariate Analysis
@@ -295,130 +737,155 @@ ggplot(aes(x=factor(additive_coef), y=strength),data=c_ratios) + geom_boxplot() 
 * Plasticizer creates it's strongest blend at about 30g per Kg of cement.
 
 ### Did you observe any interesting relationships between the other features (not the main feature(s) of interest)?
-Particular blends based on the presence of optional additives result in having different resultant strentghs, and are also more consistently strong dispite a wetter mixture.  The additives and plasticizer, in particular, seem to make blends more consistently strong when they harden.  
 
-Blends with plasticizer 3,4,7,8 seem to indicate that when plasticizer is present, the mixture is weakened with the addition of flyash, but 1 & 2 show that when no plasticizer is present, fly ash doesn't impair the strength.  I think they may be incompatible additives.
+Blends 3,4,7,8 seem to indicate that when plasticizer is present, the mixture is weakened with the addition of flyash, but 1 & 2 show that when no plasticizer is present, fly ash doesn't impair the strength.  I think they may be incompatible additives.
 
+Particular blends result in having different compressive strentghs, and are also more consistently strong dispite a wetter mixture.  The additives and plasticizer and slag in particular, seem to make blends more consistently strong when they harden.  They also cure harder when mixed at a higher hydration when plasticizer is present.  
 
 ### What was the strongest relationship you found?
-The strongest factor in the strength of cement is to keep the water to cement ratio on the low side.  Even without any additives many dry concrete mixtures are among the strongest mixtures in the population.  It seems harder to hit this exact proportion of ingredients in a lot of cases, and the addition of a small amount of each of the additives, but not too much, can provide more consistently strong concrete dispite the cement mix being a little too wet.
+
+The strongest factor in the strength of a cement mixture is to keep the water to cement ratio on the low side.  Even without any additives many dry concrete mixtures are among the strongest mixtures in the population.  
+
+Despite the mixture, you want the cement to fully cure for at least 100 days before putting it under a full compressive test.
 
 # Multivariate Plots Section
 
-```{r echo=FALSE, Multivariate_Plots}
+```{r echo=FALSE, warning=FALSE, Multivariate_Plots}
 
 c_ratios$Has_Fly_Ash<-ifelse(c_ratios$flyash==0,FALSE,TRUE)
 c_ratios$Has_Plasticizer<-ifelse(c_ratios$plasticizer==0,FALSE,TRUE)
 c_ratios$Has_Slag<-ifelse(c_ratios$slag==0,FALSE,TRUE)
 
+ggplot(aes(x=water,y=strength),data=c_ratios) + 
+  geom_point( aes(color=age),na.rm=TRUE) + 
+  geom_smooth(method='loess',na.rm=TRUE) + 
+  scale_color_gradient() +
+  scale_x_log10(limits=c(0.25,quantile(c_ratios$water,0.9)),breaks=seq(0.25,1,0.25)) +
+  scale_y_sqrt()
 
-ggplot(aes(x=plasticizer,y=strength),data=c_ratios) + 
-  geom_point( aes(size=water,color=Has_Slag),alpha=0.4,na.rm=TRUE) + 
+```
+
+I wanted to try to show the importance of cure time to strength, but so many of the samples are under 50 days old, it makes it a little unclear.
+
+```{r echo=FALSE, warning=FALSE, Multivariate_Plots2}
+
+ggplot(aes(x=water,y=strength),data=c_ratios) + 
+  geom_point( aes(color=log10(age)),na.rm=TRUE) + 
+  geom_smooth(method='loess',na.rm=TRUE) + 
+  scale_color_gradient() +
+  scale_x_log10(limits=c(0.25,quantile(c_ratios$water,0.9)),breaks=seq(0.25,1,0.25)) +
+  scale_y_sqrt()
+
+```
+
+Taking the log(10) of age makes a nice gradient distribution showing the oldest blends, but the units are really unclear.  It does however highlight the older blends are among the strongest.  I think it might be best to break age down into buckets to separate older samples from the majority, which are under 30 days of cure time.
+
+```{r echo=FALSE, warning=FALSE, Multivariate_Plots3}
+day_breaks<-c(0,30,120,240,365)
+c_ratios$age_range<-cut(c_ratios$age,breaks=day_breaks)
+
+ggplot(aes(x=water,y=strength),data=c_ratios) + 
+  geom_point( aes(color=age_range),na.rm=TRUE) + 
+  geom_smooth(aes(color=age_range),method="loess",na.rm=TRUE,se=FALSE) + 
+  scale_color_discrete() +
+  scale_x_log10(limits=c(0.25,quantile(c_ratios$water,0.9)),breaks=seq(0.25,1,0.25)) +
+  scale_y_sqrt()
+
+```
+
+This makes the cure-time ranges more distinct, for sure.  It also hightlights the issue with the distribution of cure times in the study.  Most of the samples are all under 30 days, however many of the strongest blends have cure times in the neighborhood of 100 days or higher.  There aren't really enough samples over 100 days to draw any accurate conclusions about what happens to compressive strength after 100 days, but most of these charts suggest it begins to weaken somewhat.  
+
+The cluster of 240-365 day old samples that are relatively strong in the high-hydration side of the chart may suggest that it takes more time for wetter samples to reach the hardness of dryer samples, but I don't think we have enough timespan in the data, or enough samples from that age group to be sure.
+
+```{r echo=FALSE, warning=FALSE, Multivariate_Plots4}
+hydration_levels<-seq(0,2.5,0.25)
+c_ratios$hydration_level<-cut(c_ratios$water,breaks=hydration_levels)
+
+ggplot(aes(x=age,y=strength),data=c_ratios) + 
+  geom_point( aes(color=hydration_level),
+              alpha=0.4,
+              position=position_jitter(w=0.1,h=0.1),na.rm=TRUE) + 
+  geom_smooth(aes(color=hydration_level),method="lm",na.rm=TRUE,se=FALSE) + 
+  scale_color_discrete() +
+  scale_x_log10() +
+  scale_y_sqrt()
+```
+
+I wanted to compare hydration levels, cure times, and strength.  I think it's interesting how wetter blends have a steeper slope in dry time.  I think the more water in the mixture the higher the hardening rate could be because there is more water to evaporate out of the curing concrete.  This is might be why the log10(age) and log10(water) transformations help build a good linear relationship with strength. 
+
+After 100 days the data gets sparse and messy. I would have like to see if wet mixtures would eventually harden as much as dryer mixtures given enough time.
+
+
+### Additive Interactions
+```{r echo=FALSE, warning=FALSE, Additive_Interactions1}
+
+ggplot(aes(x=water,y=strength),data=c_ratios) + 
+  geom_point( aes(color=Has_Plasticizer,size=slag),position=position_jitter(w=0.1,h=0.1),na.rm=TRUE) + 
+  geom_smooth(aes(color=Has_Plasticizer),method='loess',na.rm=TRUE) + 
+ # scale_colour_brewer( palette=2) +
+  scale_x_log10(limits=c(quantile(c_ratios$water,0.05),
+                         quantile(c_ratios$water,0.95)),
+                breaks=seq(0.25,1.25,0.25)) +
+  scale_y_sqrt()
+```
+
+
+This chart shows the presence of plasticizer in blue breaks the apparent ceiling for compressive strength above 60 MPa. With plasticizer samples are able to reach above 80 MPa.  These high limits can't be broken without any slag, though.  The size of the dots shows that just the right amount of slag is required to get the most strength.  None of the strongest samples are especially heavy or light with slag.
+
+```{r echo=FALSE, warning=FALSE, Additive_Interactions2}
+ggplot(aes(x=water,y=strength),data=c_ratios) + 
+  geom_point( aes(color=Has_Slag,size=plasticizer),position=position_jitter(w=0.1,h=0.1),na.rm=TRUE) + 
   geom_smooth(aes(color=Has_Slag),method='loess',na.rm=TRUE) + 
-  scale_colour_brewer( palette=cc_palette) +
-  scale_x_continuous(limits=c(0.02,quantile(c_ratios$plasticizer,0.8))) +
-  scale_y_continuous()
-
-ggplot(aes(x=plasticizer,y=strength),data=c_ratios) + 
-  geom_point( aes(size=water,color=Has_Fly_Ash),alpha=0.4,na.rm=TRUE) + 
-  geom_smooth(aes(color=Has_Fly_Ash),method='loess',na.rm=TRUE) + 
-  scale_colour_brewer( palette=cc_palette) +
-  scale_x_continuous(limits=c(0.02,quantile(c_ratios$plasticizer,0.8))) +
-  scale_y_continuous()
-
+ # scale_colour_brewer( palette=2) +
+  scale_x_log10(limits=c(quantile(c_ratios$water,0.05),
+                         quantile(c_ratios$water,0.95)),
+                breaks=seq(0.25,1.25,0.25)) +
+  scale_y_sqrt()
 
 ```
 
-# Linear Regression
-```{r echo=FALSE, Linear_Regression0.1}
-# fit <- lm(strength ~ age + water + slag + plasticizer + flyash, data=c_ratios)
-# fit <- lm(sqrt(strength) ~ log10(age) + log10(water) + slag + plasticizer + flyash, data=c_ratios)
-# fit <- lm(sqrt(strength) ~ log10(age) + log10(water) + sqrt(slag) + sqrt(plasticizer) + sqrt(flyash) + coarse_agg + fine_agg, data=c_ratios)
+This chart shows that too much plasticizer can also weaken a concrete mixture, but slag is also required for the mixture to be in the top-tier of compressive strength.
+
+```{r echo=FALSE, warning=FALSE, Additive_Interactions3}
+ggplot(aes(x=water,y=strength),data=c_ratios) + 
+  geom_point( aes(color=Has_Plasticizer,size=flyash),position=position_jitter(w=0.1,h=0.1),na.rm=TRUE) + 
+  geom_smooth(aes(color=Has_Plasticizer),method='loess',na.rm=TRUE) + 
+ # scale_colour_brewer( palette=2) +
+  scale_x_log10(limits=c(quantile(c_ratios$water,0.05),
+                         quantile(c_ratios$water,0.95)),
+                breaks=seq(0.25,1.25,0.25)) +
+  scale_y_sqrt()
 ```
 
-```{r echo=TRUE, Linear_Regression}
-# Fit the linear regression model
-fit <- lm(sqrt(strength) ~ log10(age) + 
-                            log10(water) + 
-                            sqrt(slag) + 
-                            sqrt(plasticizer) + 
-                            sqrt(flyash), 
-                        data=c_ratios)
-# show results
-summary(fit) 
-coefficients(fit)
-plot(fit)
+This chart shows the interactions of flyash in mixtures with and without plasticizer.  Some of the strongest blends don't have any fly ash, so it isn't really needed in a plasticizer blend for strength, however some really strong blends have a little bit of fly ash.  Too much fly ash seems to weaken a sample.
 
+```{r echo=FALSE, warning=FALSE, Additive_Interactions4}
+ggplot(aes(x=water,y=strength),data=c_ratios) + 
+  geom_point( aes(color=Has_Fly_Ash,size=plasticizer),position=position_jitter(w=0.1,h=0.1),na.rm=TRUE) +   geom_smooth(aes(color=Has_Fly_Ash),method='loess',na.rm=TRUE) + 
+ # scale_colour_brewer( palette=2) +
+  scale_x_log10(limits=c(quantile(c_ratios$water,0.05),
+                         quantile(c_ratios$water,0.95)),
+                breaks=seq(0.25,1.25,0.25)) +
+  scale_y_sqrt()
 ```
 
-# Multivariate Analysis
+This chart shows that fly ash is not required for a mixture to be in the strongest category, although some very strong blends have a little bit of fly ash.  As with any additive, adding too much can really weaken a concrete mixture.
 
-### Talk about some of the relationships you observed in this part of the investigation. Were there features that strengthened each other in terms of looking at your feature(s) of interest?
-There were a lot of interesting relationships. Each of the optional additives seems to play a role in determining the strength of the resultant concrete.  Plasticizer and Slag seem to improve the strength to a point, but if too much is added, they impair the strength of the mixture.  Fly ash seems to weaken the mixture if any amount is added.
-
-### Were there any interesting or surprising interactions between features?
-The charts show the affects of fly ash and slag on mixtures containing plasticizer.  They confirm the sweet spot of 30g of plasticizer per kg of cement.  They also show the effects of the presence of fly ash and slag to a mixture containing plasticizer.  The size of the points indicate the ratio of water in the mixture.  It shows wetter mixtures fall nearer to the bottom, but are also supported in strength with increasing levels of plasticizer.
-
-### OPTIONAL: Did you create any models with your dataset? Discuss the strengths and limitations of your model.
-I created a linear regression model starting with the age of the cement, which already showed some correlation.  As components were were added, the R^2 score of the model improved.  Once I finally added transformations for the age and strength, the R^2 improved again to better than 8.1.  
-
-Finally transforming each of the optional aggregates increased the R^2 score to .8399.  Once observing that the ratios of aggregates had very little correlation with concrete strength, I removed them and it brought the R^2 down to 0.8398.  I'm going to leave the aggregates out of this model because they don't make much of a contribution to the result.
-
-I actually thought when I started I wouldn't get a model quite this good with this data, so it did exceed my expectations, but I think there are limitations.  For example the data doesn't take into account the environmental condions when the cement was curing.  The plots also don't fit an exact linear model after the transformation.  I think some non-linear regression model might get a closer fit.
-
-------
-
-# Final Plots and Summary
-
-### Plot One
-```{r echo=FALSE, Plot_One}
-ggplot(aes(x=water,y=strength),data=c_ratios) +      
-  geom_point(aes(color=factor(additive_coef)),na.rm=TRUE) + 
-  scale_colour_brewer( palette=cc_palette) + 
-  xlab('Water in kg') + 
-  ylab('Strength in MPa') + 
-  labs(color = "Blend") 
-  #scale_x_log10(breaks=seq(0.25,1.25,0.25)) +
-  #scale_y_sqrt()
-
-#names(c_ratios)
+```{r echo=FALSE, warning=FALSE, Additive_Interactions5}
+ggplot(aes(x=water,y=strength),data=subset(c_ratios,Has_Plasticizer==FALSE)) + 
+  geom_point( aes(color=Has_Fly_Ash,size=flyash),position=position_jitter(w=0.1,h=0.1),na.rm=TRUE) +   geom_smooth(aes(color=Has_Fly_Ash),method='loess',na.rm=TRUE) + 
+ # scale_colour_brewer( palette=2) +
+  scale_x_log10(limits=c(quantile(c_ratios$water,0.05),
+                         quantile(c_ratios$water,0.95)),
+                breaks=seq(0.25,1.25,0.25)) +
+  scale_y_sqrt()
 ```
 
-### Description One
-A plot showing water vs. strength for each of the blends by color. The even numbered blends contain fly ash, and the odd numbered blends do not.  The blends seem to form overlapping, but distinct clusters by blend.  I think an interesting observation here are the differences in strengths between the even and odd numbered blends, When comparing 7 which is the strongest mixture, to 8, which is like 7 but with fly ash, or comparing blend 3 to 4, the blends without fly ash tend to be stronger.
+I wanted to examine the behavior of fly ash in blends that do not have plasticizer.  Unfortunately there are only six samples that have fly ash, but no plasticizer, so we won't do that comparison with this data.
 
-Another interesting observation is that the blends with plasticizer 7 and 8 seem to better maintain their hardness displite the presence of more water.  I expect it helps the concrete to flow better when poured, but also maintain better hardness.
+### Blend Composition
+```{r echo=FALSE, warning=FALSE, Multivariate_Plots5}
 
-### Plot Two
-
-#### Boxplot showing difference in means between strong and population samples
-```{r echo=FALSE, Plot_Two}
-set.seed(2233)
-
-compare_strongest_top<-subset(c_ratios,strength>=60)
-compare_strongest_pop<-subset(c_ratios, strength %in% sample(c_ratios$strength,nrow(subset(c_ratios,strength>=60))))
-
-compare_strongest_top<-transform(compare_strongest_top,sample='strongest')
-compare_strongest_pop<-transform(compare_strongest_pop,sample='population')
-#rm(compare_strongest)
-compare_strongest<-rbind(compare_strongest_top,compare_strongest_pop)
-#names(compare_strongest)
-compare_strongest<-melt(compare_strongest,c('cement','sample','Has_Fly_Ash','Has_Plasticizer','Has_Slag','additive_coef','strength','age'))
-
-ggplot(aes(x=variable,y=value,color=sample),data=compare_strongest) +  
-  geom_boxplot(outlier.size = 1) + 
-  facet_wrap(~variable,scales='free',ncol=2) + 
-  scale_colour_brewer( palette=cc_palette) + 
-  ggtitle('Comparison between the strongest blends and the general population') +
-  labs(color="Sample") + 
-  xlab("Variable") +
-  ylab("Weight in Kg per Kg of Cement") 
-
-
-#Create  ratios based on the total weight instead of one ingredient
-tot_ratios <- transform(cc,tot_weight=(water + cement + fine_agg + coarse_agg + flyash + slag + plasticizer))
-tot_ratios <- make_ratio(tot_ratios,tot_ratios$tot_weight)
-#head(tot_ratios)
 
 tot_ratio_top<-subset(tot_ratios,strength>=60)
 tot_ratio_pop<-subset(tot_ratios, strength %in% sample(tot_ratios$strength,nrow(subset(tot_ratios,strength>=60))))
@@ -454,9 +921,136 @@ ggplot(aes(x=factor(sample),y=value*100,fill=factor(variable)),data=tot_ratio_su
   xlab('Blend Type') +
   scale_x_discrete()
 
+```
+
+The bar blot above shows a comparison of the composition of a sample of the  strongest blends with strengths greater than 60 MPa and the population blends, which are taken from a random sample of the population.  The strongest blends show they are sparing on the water, aggregates and additives and proportionally heavier on the cement.
+
+# Linear Regression
+```{r echo=FALSE, Linear_Regression0.1}
+# fit <- lm(strength ~ age + water + slag + plasticizer + flyash, data=c_ratios)
+# fit <- lm(sqrt(strength) ~ log10(age) + log10(water) + slag + plasticizer + flyash, data=c_ratios)
+# fit <- lm(sqrt(strength) ~ log10(age) + log10(water) + sqrt(slag) + sqrt(plasticizer) + sqrt(flyash) + coarse_agg + fine_agg, data=c_ratios)
+```
+
+```{r echo=FALSE, warning=FALSE, Linear_Regression}
+# Fit the linear regression model
+
+fit <- lm(sqrt(strength) ~ log10(age) + 
+                        log10(water) + 
+                        sqrt(slag) + 
+                        sqrt(plasticizer) + 
+                        sqrt(flyash) +
+                        log10(fine_agg) +
+                        log10(coarse_agg),
+                        data=c_ratios)
+
+
+
+#fit <- lm(strength ~        log10(age) +
+#                            log10(water) +
+#                            slag +
+#                            plasticizer + 
+#                            flyash +
+#                            fine_agg +
+#                            coarse_agg,
+#                        data=tot_ratios)
+# show results
+summary(fit) 
+coefficients(fit)
+plot(fit)
+
+```
+
+# Multivariate Analysis
+
+### Talk about some of the relationships you observed in this part of the investigation. Were there features that strengthened each other in terms of looking at your feature(s) of interest?
+
+There were a lot of interesting relationships. Each of the optional additives seems to play a role in determining the strength of the resultant concrete.  Plasticizer and Slag seem to improve the strength in the right concentrations, but if too much is added, they impair the strength of the mixture.  Fly ash seems to weaken the mixture if any is added in a plasticizer mixture.
+
+### Were there any interesting or surprising interactions between features?
+
+The charts show the affects of fly ash and slag on mixtures containing plasticizer.  They confirm the sweet spot of 30g of plasticizer per kg of cement.  They also show the effects of the presence of fly ash and slag to a mixture containing plasticizer.  They show that increasing the wetness of the mixture above 1:2 ratio with cement will impair the strenth of concrete, and possibly increase the time it takes to fully harden.
+
+### OPTIONAL: Did you create any models with your dataset? Discuss the strengths and limitations of your model.
+
+I created a linear regression model starting the transformations that I found made the best normal distributions and actually got a fairly good R^2^ score of 0.84.  I changed the transformations some, but wasn't able to signficantly improve the R^2^ beyond 0.84 for the model.    
+
+I removed and re-added variables and transformations, but wasn't able to improve the score much.  The residuals plot seems to have a little bit of a curve, and looks fairly evenly distributed and a little bit curved which seems like there must be some unaccounted for variable hiding in there.
+
+I actually thought when I started I wouldn't get a model quite this good with this data, so it did exceed my expectations, but I think there are limitations.  For example the data doesn't take into account the environmental condions when the cement was curing.  The plots also don't fit an exact linear model after the transformation.  I think some non-linear regression model might get a closer fit.  The slag vs strength curve probably deserves some more complex function to match the sweet spot for strength in it's ratio to cement.  
+
+A more complex model that considers multiple different transformations, like the ratio of ingredients to the total weight, might add additional benefits in this model.  I think the ratio of some ingredients to cement is important, but there may other interactions based on an ingredient's exposure to water that could be important to compressive strengh.
+
+------
+
+# Final Plots and Summary
+
+### Plot One
+```{r echo=FALSE, warning=FALSE, Plot_One}
+
+
+# class up the labels a little bit for the chart.
+day_breaks<-c(0,30,120,240,365)
+
+day_ranges<-c("0-30 days",
+              "31-120 days",
+              "121-240 days",
+              "241-360 days")
+
+values<-c("(0,30]"="#66C2A5",
+          "(30,120]"="#FC8D62",
+          "(120,240]"="#8DA0CB",
+          "(240,365]"="#E78AC3")
+#values<-c("1"="blue","2"="red","3"="green","4"="pink")
+
+c_ratios$age_range<-cut(c_ratios$age,breaks=day_breaks)
+c_ratios$age_range<-factor(c_ratios$age_range)
+
+ggplot(aes(x=water,y=strength),data=c_ratios) + 
+  geom_point( aes(color=age_range),na.rm=TRUE) + 
+  stat_smooth(aes(color=age_range),na.rm=TRUE,se=FALSE,method='loess') + 
+  scale_colour_manual( values = values,labels = day_ranges) +
+  scale_x_log10(limits=c(0.25,quantile(c_ratios$water,0.9)),breaks=seq(0.25,1,0.25)) +
+  ggtitle('Strength vs. Water Showing the Effects of Cure Time') +
+  labs(color="Age Range") +
+  xlab('Total Water in kg per kg of cement') + 
+  ylab('Compressive Strength in MPa') +
+  scale_y_sqrt()
+
+```
+
+### Description One
+
+This plot shows strength vs water content of each sample, but additionally shows the age range by color.  This plot demonstrates the effects of age on hardness.  Notice how all the samples over 30 days are in the high range for compressive strength.  Also this plot shows the disproportionately high number of newer samples under 30 days old in our study.
+
+
+### Plot Two
+
+#### Boxplot showing difference in means between strong and population samples
+```{r echo=FALSE, warning=FALSE, Plot_Two}
+set.seed(2233)
+
+compare_strongest_top<-subset(c_ratios,strength>=60)
+compare_strongest_pop<-subset(c_ratios, strength %in% sample(c_ratios$strength,nrow(subset(c_ratios,strength>=60))))
+
+compare_strongest_top<-transform(compare_strongest_top,sample='strongest')
+compare_strongest_pop<-transform(compare_strongest_pop,sample='population')
+#rm(compare_strongest)
+compare_strongest<-rbind(compare_strongest_top,compare_strongest_pop)
+#names(compare_strongest)
+compare_strongest<-melt(compare_strongest,c('cement','sample','Has_Fly_Ash','Has_Plasticizer','Has_Slag','additive_coef','strength','age','age_range','hydration_level'))
+
+ggplot(aes(x=variable,y=value,color=sample),data=compare_strongest) +  
+  geom_boxplot(outlier.size = 1) + 
+  facet_wrap(~variable,scales='free',ncol=2) + 
+  scale_colour_brewer( palette=cc_palette) + 
+  ggtitle('Composition of Strongest Blends vs The Population') +
+  labs(color="Sample") + 
+  xlab("Variable") +
+  ylab("Weight in Kg per Kg of Cement") 
+
 #summary(subset(compare_strongest,sample=='population')$strength)
 #summary(subset(compare_strongest,sample=='strongest')$strength)
-
 
 
 ```
@@ -466,13 +1060,14 @@ This plot shows the proportionate makeup of the strongest blends in comparison w
 
 
 ### Plot Three
-```{r echo=FALSE, Plot_Three}
+```{r echo=FALSE, warning=FALSE, Plot_Three}
 
 
  ggplot(aes(x=water,y=strength),data=subset(c_ratios,additive_coef==1 | additive_coef==7 ))  +
   geom_point(aes(color=factor(additive_coef))) +
   geom_smooth(aes(color=factor(additive_coef)),method='lm',na.rm=TRUE) +
   scale_colour_brewer( palette=cc_palette) + 
+  ggtitle('Hydration vs. Compressive Strength Showing the Effects of Additives') +
   xlab('Water in kg') + 
   ylab('Strength in MPa') + 
   labs(color = "Blend") +
@@ -483,14 +1078,30 @@ This plot shows the proportionate makeup of the strongest blends in comparison w
 
 ### Description Three
 
-This plot shows the difference water vs. strength in the strongest blend, blend 7, and the blend with no optional additives, blend 1.  It shows that the concrete is able to better maintain it's strength dispite a higher level of hydration.  I think the addition of the additives probably aids in pouring and forming the cement while maintaining it's hardness.  
+This plot shows the difference water vs. strength in the strongest blend, blend 7, and the blend with no optional additives, blend 1.  It shows that the concrete is able to better maintain it's strength despite a higher level of hydration.  I think the addition of the additives probably aids in pouring and forming the cement while maintaining it's hardness.  
 
 ------
 
 
 # Reflection
-In this study first we identified the distribution of attributes in the dataset.  We then found correlations between the ratio of the various components relative to the weight of cement in the mixture.  Once these relationships  were identified, and transformed to more approximate linear relationships, a linear regression model was built.  The model was tuned to get the best R^2 score without adding aggregate components that don't contribute much to the mixtures resultant strength.
+In this study first we identified the distribution of attributes in the dataset.  We then found correlations between the ratio of the various components relative to the weight of cement in the mixture.  
 
-Overall I'm surprised about how much can be inferred about the complex interactions of the components used in concrete mixtures with only a little over 1000 rows of data.  Before starting this project I knew very little about what made a good concrete mixture, and without studying how to blend concrete, or the purpose of the various components, I think I have a good idea how the components are used, and the ideal composition if your goal is strong concrete.  It's also interesting to see how the interactions can be plotted and tried to fit to a linear relationship in order to predict a result, then test the quality of that estimation.  
+Once these relationships  were identified, and transformed to more approximate linear relationships, a linear regression model was built.  The model was tuned to get the best R^2^ score using transformations that proved benificial in the univariate analysis.
 
-I think this model would make a good starting point for a more complex and more accurate model that took more factors into account, like the environmental conditions in cure time, and to compare more samples at the same points in age, such as to have a higher quantity of samples at the 100 day cure time mark.  Non-linear models would also likely yield a stronger predictive score.
+Overall I'm surprised about how much can be inferred about the complex interactions of the components used in concrete mixtures with only a little over 1000 rows of data.  Before starting this project I knew very little about what made a good concrete mixture.  Now without studying how to blend concrete, or the purpose of the various components, I think I have a good idea how the components are used, and the ideal composition if your goal is strong concrete.  It's also interesting to see how the interactions can be plotted and tried to fit to a linear relationship in order to predict a result, then test the quality of that estimation.  
+
+Early in the study I found ratios to be the best way to analyze the observations in terms of compressive strength.  The issue I encountered was what ratio to choose.  I still don't think I've explored all this data, and I think the remainder of the variables to predict compressive strengh may lie in the interactions between components that I left unexplored.
+
+I added some categorical variables and plotted some apparent relationsips between components and their effects on compressive strengh.  Overall there were some good looking correlations there, once they were cropped and shaped up, but there were some issues with the scope and composition of the data, that left me wishing I had a little bit of an improved dataset.
+
+I wanted to see a more balanced range of cure times.  I'm still not sure there are enough older samples to make accurate statements about the strength of samples over 100 days old, or with higher hydration levels.  I have a suspicion that if we saw a study that went on for two to three years, there would be more strong samples in the longer cure time ranges with wetter blends.  
+
+I also wanted to expore what seemed to be a conflicting ratio between fly ash and plasticizer, but when I got to the point of comparing blends, there weren't enough observations with fly ash an no plasticizer to make any meaningful comparisons.
+
+The linear model gave coefficients that yielded residuals with a mean value of 0.033, and has an R^2^ of 0.84. The residuals plot produced a nearly flat line, but still has a slight curve like there is an unaccounted for variable with a slightly skewed distribution.  Overall it's a fairly random normall looking distribution.
+
+I think the multiple linear model I used here would make a good starting point for a more complex and more accurate model that took more factors into account, like the environmental conditions in cure time, and to compare more samples at the same points in age, such as to have a higher quantity of samples at the 100 day cure time mark.  Using more complex functions to match the non-linear behaviors of certain components, like slag, would also likely yield a stronger predictive score.  
+
+I also think chosing only one ratio may be limiting the predicive accuracy of this model.  In the water ratio correlation matrix it shows plasticizer has a fairly strong predictive influence on strength.  I expect this might be an indication that the ratio of water to plasticizer is also important, and might be a good improvement to this regression model.  I think there may be a few unexplored interactions like this.
+
+If I had more data and spent more time, I would like show more comparisons with hydration, cure time and strength.  I would think more observations at various cure time intervals, and possibly additional variables like average temperature and humidity where the samples cured might help build a better predictive model.
